@@ -79,7 +79,8 @@ fn usage_exit(code: i32) -> ! {
         "usage: emuera-tty [GAME_DIR] [options]\n\
          \n\
          GAME_DIR may be a game folder or an archive of one (.zip, .tar.gz, .7z…;\n\
-         extracted once to ~/.local/share/emuera-tty/games).\n\
+         extracted once to ~/.local/share/emuera-tty/games), or the name of a\n\
+         game in the launcher's library (its folder name, title, or part of one).\n\
          Without GAME_DIR: the current folder if it is a game, else the game\n\
          chosen last time, else a folder picker opens.\n\
          \n\
@@ -606,6 +607,16 @@ fn choose_game(o: &Opts) -> Option<PathBuf> {
     let interactive = !o.headless && !o.check && sys::is_tty();
     // an explicit folder is used as-is; only picker choices are remembered
     if let Some(g) = &o.game {
+        // not a path: a game in the library, by folder name or title
+        if !g.exists() {
+            return match picker::find_in_library(&g.to_string_lossy(), &settings::Settings::load().library) {
+                Ok(dir) => Some(dir),
+                Err(e) => {
+                    eprintln!("emuera-tty: {}", e);
+                    None
+                }
+            };
+        }
         if archive::is_archive(g) {
             if let Some(dir) = archive::already_extracted(g) {
                 return Some(dir);
