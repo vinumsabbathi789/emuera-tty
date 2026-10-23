@@ -698,9 +698,12 @@ and `emuera-tty GAME --backup-saves` backs them up.
 background, and some colours there are hard to read, like pure blue, or
 AnonTW's blue text on the dark navy background of time stop. emuera-tty
 lightens coloured text until it reaches a minimum contrast (WCAG 3:1, or
-4.5:1 on *high*), keeping its hue; greys are left alone, since games use
-them for shading. The window background set by `SETBGCOLOR` covers the
-whole screen, as in Emuera.
+4.5:1 on *high*), keeping its hue. Greys are left as dim as the game made
+them, since games use them for shading, but no dimmer: where the game sets
+no background, your terminal's own shows (emuera-tty asks the terminal for
+it), and a grey gets at least the contrast it had on Emuera's black, so
+AnonTW's dark `C_GRAY` stays readable on a dark grey theme. The window
+background set by `SETBGCOLOR` covers the whole screen, as in Emuera.
 
 ## 5. Picking a terminal
 
