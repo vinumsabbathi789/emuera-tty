@@ -549,6 +549,7 @@ running game:
 | Colours | auto, truecolor, 256, 16 | colour depth sent to the terminal |
 | Readable colours | normal, high, off | lighten coloured text that is too dark for its background |
 | Wide symbols | auto, wide, narrow, single, osc66 | how symbols get Emuera's two columns |
+| Backslash as ¥ | auto, on, off | draw `\` in game text as ¥, as Japanese fonts do; `auto`: when the game's font is one (MS Gothic, Emuera's default, MS Mincho, Meiryo), so eraTW's `\0` money shows `¥0` |
 | Copy to clipboard | game, on, off | printed text to the clipboard (below); `game`: as emuera.config says |
 | Bottom bar details | on, off | hovered button's value, running function |
 | Keyboard pointer | auto, on, off | cursor keys move a pointer, Insert / Shift+Enter click |
