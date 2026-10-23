@@ -32,6 +32,33 @@ fn game_title(dir: &Path) -> Option<String> {
     text.lines().find_map(|l| l.strip_prefix("タイトル,").map(|t| t.trim().to_string())).filter(|t| !t.is_empty())
 }
 
+/// The game in `library` that `name` stands for: its folder name (or the
+/// folder above, for a game in `eraMegatenP/Data`) or its title (as the
+/// launcher shows it), any letter case; failing an exact match, the one
+/// game whose names contain it.
+pub fn find_in_library(name: &str, library: &[PathBuf]) -> Result<PathBuf, String> {
+    let want = name.to_lowercase();
+    let names = |g: &PathBuf| -> Vec<String> {
+        let folder = |p: &Path| p.file_name().map(|n| n.to_string_lossy().to_lowercase());
+        // (only for a folder named like that: most games share a parent)
+        let generic = folder(g).is_some_and(|f| matches!(f.as_str(), "data" | "game" | "files" | "emuera"));
+        let parent = g.parent().and_then(folder).filter(|_| generic);
+        folder(g).into_iter().chain(parent).chain(game_title(g).map(|t| t.to_lowercase())).collect()
+    };
+    let games: Vec<(&PathBuf, Vec<String>)> = library.iter().filter(|g| g.is_dir()).map(|g| (g, names(g))).collect();
+    let exact: Vec<&PathBuf> = games.iter().filter(|(_, n)| n.contains(&want)).map(|(g, _)| *g).collect();
+    let found = if exact.is_empty() { games.iter().filter(|(_, n)| n.iter().any(|n| n.contains(&want))).map(|(g, _)| *g).collect() } else { exact };
+    match found.as_slice() {
+        [g] => Ok((*g).clone()),
+        [] => Err(format!("no folder or game called '{}' in the library (emuera-tty --choose lists it)", name)),
+        many => Err(format!(
+            "'{}' could be any of these, give more of the name or the folder:\n{}",
+            name,
+            many.iter().map(|g| format!("  {}", g.display())).collect::<Vec<_>>().join("\n")
+        )),
+    }
+}
+
 /// One row of the listing.
 struct Entry {
     label: String,
@@ -1616,4 +1643,34 @@ fn git_pull_logged(root: &Path, log: &mut String) -> Result<String, String> {
 fn which(name: &str) -> Option<PathBuf> {
     let exe = if cfg!(windows) { format!("{}.exe", name) } else { name.to_string() };
     std::env::split_paths(&std::env::var_os("PATH")?).map(|d| d.join(&exe)).find(|p| p.is_file())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::find_in_library;
+
+    /// A game named on the command line: folder, title or a unique part of
+    /// one; the folder above only for a game in a folder named like `Data`.
+    #[test]
+    fn library_names() {
+        let root = std::env::temp_dir().join(format!("emuera-tty-library-{}", std::process::id()));
+        let mk = |rel: &str, title: &str| {
+            let g = root.join(rel);
+            std::fs::create_dir_all(g.join("CSV")).unwrap();
+            std::fs::create_dir_all(g.join("ERB")).unwrap();
+            std::fs::write(g.join("CSV/GAMEBASE.csv"), format!("タイトル,{}\n", title)).unwrap();
+            g
+        };
+        let lib = vec![mk("era-games/anon-tw", "eratohoTW"), mk("era-games/eraMegatenP/Data", "eraMegatenP"), mk("era-games/eraAkumaMaid", "eraAkumaMaid")];
+        let f = |n: &str| find_in_library(n, &lib);
+        assert_eq!(f("anon-tw"), Ok(lib[0].clone()));
+        assert_eq!(f("ERATOHOTW"), Ok(lib[0].clone()));
+        assert_eq!(f("anon"), Ok(lib[0].clone()));
+        assert_eq!(f("eramegatenp"), Ok(lib[1].clone()));
+        assert_eq!(f("akuma"), Ok(lib[2].clone()));
+        assert!(f("era").unwrap_err().contains("could be any of"));
+        // the folder all of them share isn't one of their names
+        assert!(f("era-games").unwrap_err().contains("no folder or game"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
