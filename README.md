@@ -411,6 +411,8 @@ launcher. Other ways to start:
 ```sh
 emuera-tty --choose                 # open the launcher even with one game
 emuera-tty ~/games/eratohoTW        # play a specific folder
+emuera-tty eratohoTW                # a game in the library, by folder name
+emuera-tty anon                     #   or title, or a part of one
 cd ~/games/eratohoTW && emuera-tty  # a game in the current folder wins
 emuera-tty ~/Downloads/eratohoTW.zip # play straight from the archive
 ```
@@ -1562,6 +1564,12 @@ ignored by default until emuera-tty passes it.
 
 `tools/game_smoke.sh GAME_DIR [STEPS] [SEED]` plays a real game with random
 menu choices in a throwaway copy and reports script errors.
+
+`tools/test-game.sh GAME` (`tools\test-game.bat` on Windows) builds
+emuera-tty from the checkout and runs a game with it, leaving the installed
+copy alone: GAME is a folder or a library name, `--fast` first builds the
+quicker `fastbuild` profile, and emuera-tty's options can follow GAME
+(`tools/test-game.sh --fast anon-tw --check`).
 
 ### Development builds
 
