@@ -43,6 +43,8 @@ enum Mode {
     Library,
     Browse,
     Settings,
+    /// the worktrees of a game kept in git (`Picker::wt_main`)
+    Worktrees,
 }
 
 #[derive(Clone, PartialEq)]
@@ -56,6 +58,8 @@ enum Kind {
     /// library: clone a game's git repository and add it
     CloneGame,
     OpenSettings,
+    /// worktrees: share the main checkout's saves, or not
+    ToggleSharedSaves,
     /// settings: `crate::settings::ITEMS[i]`
     Setting(usize),
     Back,
@@ -107,6 +111,10 @@ struct Picker {
     /// for as long as its result line is on screen
     git_log: Option<String>,
     st: crate::settings::Settings,
+    /// the worktrees page: the main checkout, and the game's folder inside
+    /// a checkout (empty, or `Data` for a game kept in a subfolder)
+    wt_main: PathBuf,
+    wt_sub: PathBuf,
 }
 
 /// The launcher: the game library, with adding games and settings. Returns
@@ -141,6 +149,8 @@ fn run_screen(mode: Mode, start: &Path) -> Option<PathBuf> {
         adding: false,
         git_log: None,
         st: crate::settings::Settings::load(),
+        wt_main: PathBuf::new(),
+        wt_sub: PathBuf::new(),
     };
     p.load();
     let chosen = p.run();
@@ -188,6 +198,9 @@ impl Picker {
                         },
                         None => String::new(),
                     };
+                    // other checkouts of it (git worktrees): `w` lists them
+                    let others = worktree_set(&g).map_or(0, |(_, _, list)| list.len().saturating_sub(1));
+                    let git = if others > 0 { format!("{}  · +{} worktree{} (w)", git, others, if others == 1 { "" } else { "s" }) } else { git };
                     // a game added from here (cloned or picked) and not played yet: "★ (NEW) Title" (gold in `draw`)
                     let new = if self.st.fresh.contains(&g) { "(NEW) " } else { "" };
                     self.entries.push(Entry { label: format!("★ {}{}   {}{}{}", new, title, g.display(), last, git), kind: Kind::Game { path: g, ok } });
@@ -204,6 +217,33 @@ impl Picker {
                     let v = self.st.get(it.key);
                     let restart = if it.live { "" } else { "  (next start)" };
                     self.entries.push(Entry { label: format!("{:<18} ‹ {} ›{}", it.label, v, restart), kind: Kind::Setting(i) });
+                }
+                self.entries.push(Entry { label: "← Back".into(), kind: Kind::Back });
+                self.sel = self.sel.min(self.entries.len() - 1);
+                return;
+            }
+            Mode::Worktrees => {
+                let shared = self.st.shared_saves.iter().any(|p| p.canonicalize().ok().as_deref() == Some(self.wt_main.as_path()));
+                let label = if shared {
+                    format!(
+                        "⇄ Saves: shared, every worktree uses {}'s",
+                        self.wt_main.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned())
+                    )
+                } else {
+                    "⇄ Saves: each worktree keeps its own (Enter: share the main checkout's)".to_string()
+                };
+                self.entries.push(Entry { label, kind: Kind::ToggleSharedSaves });
+                if let Some((_, _, list)) = worktree_set(&self.wt_main.join(&self.wt_sub)) {
+                    for (dir, head) in list {
+                        let g = if self.wt_sub.as_os_str().is_empty() { dir.clone() } else { dir.join(&self.wt_sub) };
+                        // a checkout already in the library keeps the path it has there
+                        // (one reached through a symlink would otherwise be listed twice)
+                        let canon = g.canonicalize().ok();
+                        let g = self.st.library.iter().find(|l| l.canonicalize().ok() == canon && canon.is_some()).cloned().unwrap_or(g);
+                        let ok = is_game_dir(&g);
+                        let main = if dir == self.wt_main { "  (main)" } else { "" };
+                        self.entries.push(Entry { label: format!("★ {}{}   {}", head, main, g.display()), kind: Kind::Game { path: g, ok } });
+                    }
                 }
                 self.entries.push(Entry { label: "← Back".into(), kind: Kind::Back });
                 self.sel = self.sel.min(self.entries.len() - 1);
@@ -279,6 +319,12 @@ impl Picker {
                     fit(&crate::settings::config_path().map(|p| p.display().to_string()).unwrap_or_default(), cols)
                 )
             }
+            Mode::Worktrees => {
+                s += &format!(
+                    "\x1b[1mWorktrees\x1b[0m  (branches checked out beside the game)\r\n\x1b[2m{}\x1b[0m\r\n",
+                    fit(&self.wt_main.display().to_string(), cols)
+                )
+            }
             Mode::Browse => {
                 s += &format!(
                     "\x1b[1mChoose an Emuera game folder or archive\x1b[0m  (★ = game, ▣ = archive)\r\n\x1b[2m{}\x1b[0m\r\n",
@@ -332,8 +378,11 @@ impl Picker {
         }
         let help = match self.mode {
             // right after an update, `g` is the full git output (not "top")
-            Mode::Library if self.git_log.is_some() => "g git output  ↑↓ move  Enter play  a add  u update  U update all  d remove  s settings  q quit",
-            Mode::Library => "↑↓ move  Enter play  a add  u update  U update all  d remove  s settings  q quit",
+            Mode::Library if self.git_log.is_some() => {
+                "g git output  ↑↓ move  Enter play  a add  u update  U update all  w worktrees  d remove  s settings  q quit"
+            }
+            Mode::Library => "↑↓ move  Enter play  a add  u update  U update all  w worktrees  d remove  s settings  q quit",
+            Mode::Worktrees => "↑↓ move  Enter play / change  Esc back",
             Mode::Settings => "↑↓ move  ←/→ or Enter change  Esc back",
             Mode::Browse if self.adding => "↑↓ move  Enter add/open  → open  ← up  ~ home  . hidden  Esc back",
             Mode::Browse => "↑↓ move  Enter play/open  → open  ← up  ~ home  . hidden  q quit",
@@ -421,7 +470,7 @@ impl Picker {
                     self.mode = Mode::Library;
                     self.load();
                 }
-                Act::Cancel if self.mode == Mode::Settings => {
+                Act::Cancel if self.mode == Mode::Settings || self.mode == Mode::Worktrees => {
                     self.mode = Mode::Library;
                     self.load();
                 }
@@ -437,6 +486,21 @@ impl Picker {
         match (self.mode, &act) {
             (Mode::Library, Act::Letter('a')) => {
                 self.start_adding();
+                Err(None)
+            }
+            (Mode::Library, Act::Letter('w')) => {
+                if let Some(Entry { kind: Kind::Game { path, .. }, .. }) = self.entries.get(self.sel) {
+                    match worktree_set(path) {
+                        Some((main, sub, list)) if list.len() > 1 => {
+                            self.wt_main = main;
+                            self.wt_sub = sub;
+                            self.mode = Mode::Worktrees;
+                            self.sel = 0;
+                            self.load();
+                        }
+                        _ => self.note = "This game has no other worktrees (git worktree add makes one).".into(),
+                    }
+                }
                 Err(None)
             }
             (Mode::Library, Act::Letter('s')) => {
@@ -949,6 +1013,17 @@ impl Picker {
                 self.sel = 0;
                 self.load();
             }
+            Kind::ToggleSharedSaves => {
+                let main = self.wt_main.clone();
+                let on = self.st.toggle_shared_saves(&main);
+                self.st.save();
+                self.note = if on {
+                    format!("Every worktree now loads and saves {}'s saves.", main.join(&self.wt_sub).display())
+                } else {
+                    "Each worktree keeps its own saves again (the shared ones stay in the main checkout).".into()
+                };
+                self.load();
+            }
             Kind::Setting(i) => {
                 self.st.cycle(crate::settings::ITEMS[i].key, 1);
                 self.st.save();
@@ -1326,6 +1401,25 @@ pub fn upgrade() -> Result<String, String> {
 fn git_root(game: &Path) -> Option<PathBuf> {
     which("git")?;
     game.ancestors().take(3).find(|d| d.join(".git").exists()).map(Path::to_path_buf)
+}
+
+/// The checkouts of the git repository `game` is in: the main checkout,
+/// the game's folder within a checkout (`Data` for some games, else empty)
+/// and every checkout (the main one first) with what it has checked out.
+/// None outside git. Read from git's files, so git needn't be installed.
+fn worktree_set(game: &Path) -> Option<(PathBuf, PathBuf, Vec<(PathBuf, String)>)> {
+    let root = crate::savemgr::repo_root(game)?;
+    let sub = game.strip_prefix(&root).unwrap_or(Path::new("")).to_path_buf();
+    let main = match crate::savemgr::worktree_main(&root) {
+        Some(m) => m,
+        None => root.canonicalize().ok()?,
+    };
+    let head = std::fs::read_to_string(main.join(".git").join("HEAD")).unwrap_or_default();
+    let head =
+        head.trim().strip_prefix("ref: refs/heads/").map_or_else(|| format!("detached @ {}", head.trim().chars().take(9).collect::<String>()), str::to_string);
+    let mut list = vec![(main.clone(), head)];
+    list.extend(crate::savemgr::worktrees(&main).into_iter().map(|w| (w.dir, w.head)));
+    Some((main, sub, list))
 }
 
 /// The folder `git clone` makes for `url`: its last path part without ".git".

@@ -64,6 +64,7 @@ Expect rough edges in parts of the games nobody has played through yet
     - [Cloning a game from the launcher](#cloning-a-game-from-the-launcher)
     - [Updating games kept in git](#updating-games-kept-in-git)
       - [Games with pictures in Git LFS](#games-with-pictures-in-git-lfs)
+      - [Branches side by side (git worktrees)](#branches-side-by-side-git-worktrees)
     - [Other ways to start](#other-ways-to-start)
     - [Archives](#archives)
   - [4. Playing](#4-playing)
@@ -395,6 +396,23 @@ files instead of the pictures, and scripts that measure a picture fail
 (pops-tw's title: a division by zero in `@TITLE_NAS`). Install git-lfs and
 run `git lfs pull` in the game folder (or `u` again); the script error
 screen says so when it finds such pointers.
+
+#### Branches side by side (git worktrees)
+
+A game kept in git can have other branches checked out beside it with `git
+worktree add` (say a translation branch and a modding branch). The launcher
+marks such a game `· +N worktrees (w)`; `w` lists every checkout with its
+branch, and Enter plays the one picked (a game kept in a subfolder of its
+repository, like `Data/`, is played from the same subfolder of each).
+
+The list's first entry, *Saves*, makes all of them use the main checkout's
+saves instead of each its own: `sav/` (or the game folder), `dat/` and the
+backups, so one save loads on every branch, for instance a day just before
+an event that only one branch has. Turned off again, each worktree goes back
+to its own saves, and the shared ones stay in the main checkout. Branches
+usually add or remove variables, and a save made on one loads on the other
+as it would in Emuera: what the other branch doesn't know is dropped.
+`emuera-tty WORKTREE --saves` lists the saves the worktree uses.
 
 ### Other ways to start
 

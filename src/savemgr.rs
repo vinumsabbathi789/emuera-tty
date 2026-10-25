@@ -6,6 +6,10 @@
 //! save folder, so everything here is plain file copying. Nothing is ever
 //! deleted outright: a removed or overwritten save first goes to a backup
 //! under `$XDG_DATA_HOME/emuera-tty/backups/<game>/`.
+//!
+//! A game kept in git may have worktrees (other branches checked out
+//! beside it). The launcher can make them share the main checkout's saves
+//! (`save_home`), so the same save loads on every branch.
 
 use std::path::{Path, PathBuf};
 
@@ -254,6 +258,80 @@ pub fn save_dir_of(game: &Path) -> PathBuf {
     }
 }
 
+/// The main checkout of a git worktree: `dir/.git` is then a file
+/// (`gitdir: <main>/.git/worktrees/<name>`). None for a main checkout or a
+/// folder outside git. Read from the files, without running git.
+pub fn worktree_main(dir: &Path) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(dir.join(".git")).ok()?;
+    let gitdir = PathBuf::from(text.trim().strip_prefix("gitdir:")?.trim());
+    let gitdir = if gitdir.is_absolute() { gitdir } else { dir.join(gitdir) };
+    // `commondir` points at the repository's .git (usually "../..")
+    let common = match std::fs::read_to_string(gitdir.join("commondir")) {
+        Ok(c) => gitdir.join(c.trim()),
+        Err(_) => gitdir.parent()?.parent()?.to_path_buf(),
+    };
+    let common = common.canonicalize().ok()?;
+    (common.file_name()? == ".git").then(|| common.parent().map(Path::to_path_buf)).flatten()
+}
+
+/// A worktree of a checkout: its folder and what it has checked out (a
+/// branch, or `detached @ <commit>`).
+pub struct Worktree {
+    pub dir: PathBuf,
+    pub head: String,
+}
+
+/// The worktrees of the main checkout `main` that still exist (git keeps
+/// entries for removed ones until `git worktree prune`), by folder name.
+pub fn worktrees(main: &Path) -> Vec<Worktree> {
+    let Ok(rd) = std::fs::read_dir(main.join(".git").join("worktrees")) else { return Vec::new() };
+    let mut out: Vec<Worktree> = rd
+        .flatten()
+        .filter_map(|e| {
+            let meta = e.path();
+            // `gitdir`: the worktree's own .git file
+            let dot_git = PathBuf::from(std::fs::read_to_string(meta.join("gitdir")).ok()?.trim());
+            let dir = dot_git.parent()?.to_path_buf();
+            if !dir.join(".git").is_file() {
+                return None;
+            }
+            let head = std::fs::read_to_string(meta.join("HEAD")).unwrap_or_default();
+            let head = match head.trim().strip_prefix("ref: refs/heads/") {
+                Some(b) => b.to_string(),
+                None => format!("detached @ {}", head.trim().chars().take(9).collect::<String>()),
+            };
+            Some(Worktree { dir, head })
+        })
+        .collect();
+    out.sort_by(|a, b| a.dir.cmp(&b.dir));
+    out
+}
+
+/// The git checkout `game` is in (its folder or one of the two above:
+/// some games keep theirs in a subfolder such as `Data/`).
+pub fn repo_root(game: &Path) -> Option<PathBuf> {
+    game.ancestors().take(3).find(|d| d.join(".git").exists()).map(Path::to_path_buf)
+}
+
+/// Where `game` keeps its saves: its own folder, or the same folder in the
+/// main checkout when `game` is in a worktree of a checkout listed in
+/// `shared` (the launcher's "share saves"). `sav/`, `dat/` and the backups
+/// all follow.
+pub fn save_home(game: &Path, shared: &[PathBuf]) -> PathBuf {
+    let Some(root) = repo_root(game) else { return game.to_path_buf() };
+    match worktree_main(&root) {
+        Some(main) if shared.iter().any(|s| s.canonicalize().ok().as_deref() == Some(main.as_path())) => {
+            let sub = game.strip_prefix(&root).unwrap_or(Path::new(""));
+            if sub.as_os_str().is_empty() {
+                main
+            } else {
+                main.join(sub)
+            }
+        }
+        _ => game.to_path_buf(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,5 +366,41 @@ mod tests {
         assert_eq!(restore(&bk, &dir, &root).unwrap(), 2);
         assert_eq!(std::fs::read(dir.join("save01.sav")).unwrap(), b"one");
         let _ = std::fs::remove_dir_all(&t);
+    }
+
+    /// A worktree is found from its .git file, listed from the main
+    /// checkout, and shares the main checkout's saves only when asked
+    #[test]
+    fn worktrees_and_shared_saves() {
+        let root = std::env::temp_dir().join(format!("emuera-tty-worktrees-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let main = root.join("game");
+        let wt = root.join("game.worktrees").join("parsee");
+        let gone = root.join("game.worktrees").join("removed");
+        let meta = main.join(".git").join("worktrees").join("parsee");
+        std::fs::create_dir_all(&meta).unwrap();
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::write(meta.join("gitdir"), format!("{}\n", wt.join(".git").display())).unwrap();
+        std::fs::write(meta.join("HEAD"), "ref: refs/heads/parsee-banquets\n").unwrap();
+        std::fs::write(meta.join("commondir"), "../..\n").unwrap();
+        std::fs::write(wt.join(".git"), format!("gitdir: {}\n", meta.display())).unwrap();
+        // an entry git hasn't pruned yet, its folder deleted
+        let meta2 = main.join(".git").join("worktrees").join("removed");
+        std::fs::create_dir_all(&meta2).unwrap();
+        std::fs::write(meta2.join("gitdir"), format!("{}\n", gone.join(".git").display())).unwrap();
+        let main_c = main.canonicalize().unwrap();
+        assert_eq!(worktree_main(&wt), Some(main_c.clone()));
+        assert_eq!(worktree_main(&main), None);
+        let list = worktrees(&main);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].dir, wt);
+        assert_eq!(list[0].head, "parsee-banquets");
+        assert_eq!(save_home(&wt, &[]), wt);
+        assert_eq!(save_home(&wt, &[main.clone()]), main_c);
+        assert_eq!(save_home(&main, &[main.clone()]), main);
+        // a game in a subfolder of the checkout: the same subfolder of the main one
+        std::fs::create_dir_all(wt.join("Data")).unwrap();
+        assert_eq!(save_home(&wt.join("Data"), &[main.clone()]), main_c.join("Data"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
