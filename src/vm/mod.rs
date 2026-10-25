@@ -224,6 +224,9 @@ pub struct Vm {
     /// Warnings already printed (each is shown once).
     warned: HashSet<String>,
     pub game_dir: PathBuf,
+    /// where saves go: the game folder, or the main checkout's for a git
+    /// worktree sharing its saves (`savemgr::save_home`)
+    pub save_home: PathBuf,
     /// ONEINPUT系命令でマウスによる2文字以上の入力を許可する: a one-key input
     /// keeps a longer answer (else only its first character, as Emuera)
     long_oneinput: bool,
@@ -334,6 +337,7 @@ impl Vm {
             rng: seed | 1,
             warned: HashSet::default(),
             long_oneinput: crate::emuconfig::Values::read(&game_dir).flag("ONEINPUT系命令でマウスによる2文字以上の入力を許可する"),
+            save_home: game_dir.clone(),
             game_dir,
             strict: false,
             flow_input: (0, false, false, String::new(), false),

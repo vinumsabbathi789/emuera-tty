@@ -287,9 +287,9 @@ impl Vm {
     /// Where saveNN.sav / global.sav go (Emuera's `Config.SavDir`).
     pub fn save_dir(&self) -> PathBuf {
         if self.save_opts.in_folder {
-            self.game_dir.join("sav")
+            self.save_home.join("sav")
         } else {
-            self.game_dir.clone()
+            self.save_home.clone()
         }
     }
     pub fn save_path(&self, n: i64) -> PathBuf {
@@ -297,10 +297,10 @@ impl Vm {
     }
     /// emuera-tty's earlier save files.
     fn old_save_path(&self, n: i64) -> PathBuf {
-        self.game_dir.join("sav").join(format!("save{:02}.rsav", n))
+        self.save_home.join("sav").join(format!("save{:02}.rsav", n))
     }
     fn dat_dir(&self) -> PathBuf {
-        self.game_dir.join("dat")
+        self.save_home.join("dat")
     }
 
     /// GAMEBASE's コード / バージョン / バージョン違い認める.
@@ -457,7 +457,7 @@ impl Vm {
 
     /// Write a save safely and keep the one it replaces (`savesafe.rs`).
     fn write_file(&mut self, path: &Path, data: Vec<u8>) -> VmResult<()> {
-        let root = crate::savemgr::backup_root(&self.game_dir);
+        let root = crate::savemgr::backup_root(&self.save_home);
         let warnings = crate::savesafe::write(path, &data, root.as_deref()).map_err(|e| Ctrl::Error(e, false))?;
         for w in warnings {
             self.warn(&w);
@@ -707,7 +707,7 @@ impl Vm {
     pub fn load_global(&mut self) -> VmResult<bool> {
         let path = self.save_dir().join("global.sav");
         if !path.exists() {
-            let old = self.game_dir.join("sav").join("global.rsav");
+            let old = self.save_home.join("sav").join("global.rsav");
             return match fs::read_to_string(old) {
                 Ok(s) if s.starts_with("EMUERA-RS-SAVE 1") => {
                     self.apply_old_lines(&s, true);

@@ -179,6 +179,9 @@ pub struct Settings {
     pub last: Option<PathBuf>,
     /// games added from the launcher that haven't been played yet (listed as "(NEW)")
     pub fresh: Vec<PathBuf>,
+    /// git checkouts whose worktrees use the checkout's saves (see
+    /// `savemgr::save_home`)
+    pub shared_saves: Vec<PathBuf>,
 }
 
 /// `$XDG_CONFIG_HOME/emuera-tty/config` (default `~/.config/…`).
@@ -206,6 +209,12 @@ impl Settings {
                     let p = PathBuf::from(v);
                     if !s.fresh.contains(&p) {
                         s.fresh.push(p);
+                    }
+                }
+                "shared_saves" => {
+                    let p = PathBuf::from(v);
+                    if !s.shared_saves.contains(&p) {
+                        s.shared_saves.push(p);
                     }
                 }
                 _ => {
@@ -245,6 +254,9 @@ impl Settings {
         for g in &self.fresh {
             out += &format!("new={}\n", g.display());
         }
+        for g in &self.shared_saves {
+            out += &format!("shared_saves={}\n", g.display());
+        }
         for (k, v) in &self.values {
             out += &format!("{}={}\n", k, v);
         }
@@ -262,6 +274,19 @@ impl Settings {
             (_, Some(i)) => i.choices[0],
             (Some(v), None) => v.as_str(),
             (None, None) => "",
+        }
+    }
+
+    /// Turn sharing saves among `main`'s worktrees on or off; whether it is
+    /// now on.
+    pub fn toggle_shared_saves(&mut self, main: &Path) -> bool {
+        let key = main.canonicalize().unwrap_or_else(|_| main.to_path_buf());
+        if let Some(k) = self.shared_saves.iter().position(|p| p.canonicalize().unwrap_or_else(|_| p.clone()) == key) {
+            self.shared_saves.remove(k);
+            false
+        } else {
+            self.shared_saves.push(key);
+            true
         }
     }
 

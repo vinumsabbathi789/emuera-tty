@@ -188,7 +188,7 @@ pub trait Frontend {
     /// Override the width, for frontends with no real terminal size.
     fn set_cols(&mut self, _cols: usize) {}
     /// The game folder and where its saves are (for the save manager).
-    fn set_game(&mut self, _game: &std::path::Path, _save_dir: &std::path::Path) {}
+    fn set_game(&mut self, _game: &std::path::Path, _save_home: &std::path::Path, _save_dir: &std::path::Path) {}
     /// Show a Yes/No confirmation dialog (for infinite loop warning, etc.).
     /// Returns true for Yes, false for No. Default: false (safe default).
     fn confirm(&mut self, _con: &mut Console, _res: &mut Resources, _msg: &str) -> bool {

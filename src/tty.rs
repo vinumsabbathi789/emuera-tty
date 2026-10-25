@@ -613,6 +613,8 @@ pub struct Tty {
     cbg_scaled: std::collections::HashMap<(u64, u32, u32), std::rc::Rc<image::RgbaImage>>,
     /// the game folder and its save folder, for the save manager
     game: Option<(std::path::PathBuf, std::path::PathBuf)>,
+    /// where its saves live (the game folder, or a shared main checkout)
+    save_home: Option<std::path::PathBuf>,
     /// an animated sprite was on the last frame
     animating: bool,
     /// fbterm: 256 colours through its own escapes
@@ -917,6 +919,7 @@ impl Tty {
             force_frame: false,
             cbg_scaled: std::collections::HashMap::new(),
             game: None,
+            save_home: None,
             animating: false,
             fbterm: term.starts_with("fbterm"),
             row_hash: Vec::new(),
@@ -4377,8 +4380,9 @@ impl Frontend for Tty {
     }
 
     /// Restore the terminal (mouse off, main screen, cooked mode).
-    fn set_game(&mut self, game: &std::path::Path, save_dir: &std::path::Path) {
+    fn set_game(&mut self, game: &std::path::Path, save_home: &std::path::Path, save_dir: &std::path::Path) {
         self.game = Some((game.to_path_buf(), save_dir.to_path_buf()));
+        self.save_home = Some(save_home.to_path_buf());
     }
     fn shutdown(&mut self) {
         if !self.active {

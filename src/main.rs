@@ -552,6 +552,11 @@ fn run(o: Opts) -> i32 {
     // The VM reads EMUERA_VM_DEBUG directly
     let rename = csv.rename.clone();
     let mut vm = vm::Vm::new(prog, csv, res, fe, game.clone());
+    // a git worktree may share its main checkout's saves (the launcher's choice)
+    vm.save_home = savemgr::save_home(&game, &st.shared_saves);
+    if vm.save_home != game {
+        eprintln!("saves: shared with {}", vm.save_home.display());
+    }
     // the reload hotkey parses the ERB files again
     {
         let (g, erb, debug) = (game.clone(), erb_dir.clone(), o.game_debug);
@@ -588,7 +593,7 @@ fn run(o: Opts) -> i32 {
         vm.con.note_watch = vm.sound.is_some() && crate::loader::find_file_ci(&game, "eramidi.exe").is_some();
     }
     let sd = vm.save_dir();
-    vm.fe.set_game(&game, &sd);
+    vm.fe.set_game(&game, &vm.save_home, &sd);
     let r = vm.run();
     vm.fe.shutdown();
     #[cfg(feature = "profile")]
@@ -667,8 +672,9 @@ fn parallel_map<T: Sync, R: Send>(items: &[T], threads: usize, f: impl Fn(&T) ->
 
 /// `--saves` / `--backup-saves`.
 fn saves_cmd(cmd: &str, game: &std::path::Path) -> i32 {
-    let dir = savemgr::save_dir_of(game);
-    let root = savemgr::backup_root(game).unwrap_or_else(|| dir.join("backups"));
+    let home = savemgr::save_home(game, &settings::Settings::load().shared_saves);
+    let dir = savemgr::save_dir_of(&home);
+    let root = savemgr::backup_root(&home).unwrap_or_else(|| dir.join("backups"));
     if cmd == "backup" {
         return match savemgr::backup_all(&dir, &root, "") {
             Ok((p, n)) => {

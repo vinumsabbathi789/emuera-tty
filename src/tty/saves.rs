@@ -38,7 +38,8 @@ impl Tty {
     /// Run the save manager. Returns true if the player asked to quit.
     pub(super) fn save_manager(&mut self, con: &mut Console, res: &mut Resources, req: &InputReq) -> bool {
         let Some((game, dir)) = self.game.clone() else { return false };
-        let root = sm::backup_root(&game).unwrap_or_else(|| dir.join("backups"));
+        // (the backups of a worktree sharing its main checkout's saves are the checkout's)
+        let root = sm::backup_root(self.save_home.as_deref().unwrap_or(&game)).unwrap_or_else(|| dir.join("backups"));
         let mut sel = 0usize;
         let mut note = String::new();
         loop {
