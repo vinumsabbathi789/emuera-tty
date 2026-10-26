@@ -467,13 +467,14 @@ fn run(o: Opts) -> i32 {
     // line copies) cached in glibc's per-thread arenas: give it back
     sys::trim_memory();
     let mut res = resources::Resources::load(loader::find_dir_ci(&game, "resources").as_deref());
-    // decode the pictures the game used last time while it starts (not in
-    // headless runs: scripts and tests stay as they were; EMUERA_WARMUP=1 /
-    // 0 forces it on or off)
+    // decode the pictures the game used last time while it starts, when the
+    // "Picture warm-up" setting says so (it takes up to 3/4 of the picture
+    // budget at once); never in headless runs, so scripts and tests stay as
+    // they were. EMUERA_WARMUP=1 / 0 forces it on or off.
     let warm = match std::env::var("EMUERA_WARMUP").as_deref() {
         Ok("1") => true,
         Ok("0") => false,
-        _ => !o.headless && !o.check,
+        _ => !o.headless && !o.check && settings::Settings::load().get("warmup") == "on",
     };
     if warm {
         res.start_warmup(&game);

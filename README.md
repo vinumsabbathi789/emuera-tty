@@ -560,6 +560,7 @@ running game:
 | Translate what | auto, dialog, all | characters' dialog, or all text; auto: all unless into English |
 | Sound | auto, on, off | PLAYSOUND / PLAYBGM; `auto`: not over SSH |
 | Wheel scrolls | 3, 1, 5, 10 | lines per wheel step |
+| Picture warm-up | off, on | decode the pictures the game showed last time while it starts: they show at once, but up to 3/4 of the picture budget (1/8 of the memory) is taken at start, so it is off by default; see [Memory](#memory) (next start) |
 | Console mouse | auto, off | gpm / `/dev/input/mice` (next start) |
 | Display | auto, ansi, retro | `retro`: the ASCII terminfo frontend (next start) |
 
@@ -1200,13 +1201,19 @@ board copes and a PC with memory to spare does exactly what it did:
   stay. AnonTW's whereabouts listing decodes 32 portrait sheets, 242 MB,
   to cut 33 MB of portraits from them.
 
-**Pictures warm up while the game starts.** emuera-tty notes which picture
-files a game decoded (in `~/.local/share/emuera-tty/pictures/`) and, the
-next time it starts, decodes them again in the background on the spare
-cores, within three quarters of that budget. The first screen full of
-portraits then doesn't wait for them: AnonTW's whereabouts listing (166
-characters) went from 1.5 s to 0.4 s on its first showing. Headless runs
-don't do this; `EMUERA_WARMUP=1` (or `0`) turns it on (or off).
+**Pictures can warm up while the game starts** (the *Picture warm-up*
+setting, off by default). emuera-tty notes which picture files a game
+decoded (in `~/.local/share/emuera-tty/pictures/`) and, the next time it
+starts, decodes them again in the background on the spare cores, within
+three quarters of that budget. The first screen full of portraits then
+doesn't wait for them: AnonTW's whereabouts listing (166 characters) went
+from 1.5 s to 0.4 s on its first showing. The price is memory, taken at
+once at start: up to three quarters of an eighth of the machine's memory,
+about a tenth (some 400 MB with 4 GB, 1.5 GB with 16 GB, as much as the
+game's pictures last time added up to), which is why it is off unless you
+choose it (and best left off on small machines). Headless runs never
+do it; `EMUERA_WARMUP=1` (or `0`) turns it on (or off) whatever the
+setting says.
 
 | | before | now (PC) | with a 512 MB machine's budgets |
 |---|---|---|---|

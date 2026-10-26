@@ -116,6 +116,13 @@ pub const ITEMS: &[Item] = &[
         help: "cursor keys move a pointer, Insert or Shift+Enter click (PgUp/PgDn scroll); auto: on the Linux console without a mouse",
     },
     Item { key: "wheel", label: "Wheel scrolls", choices: &["3", "1", "5", "10"], live: true, help: "lines per mouse-wheel step" },
+    Item {
+        key: "warmup",
+        label: "Picture warm-up",
+        choices: &["off", "on"],
+        live: false,
+        help: "decode last session's pictures while the game starts: they show sooner, but take up to 3/4 of the picture budget (1/8 of the memory) at once",
+    },
     Item { key: "mouse", label: "Console mouse", choices: &["auto", "off"], live: false, help: "gpm / /dev/input/mice on the Linux console" },
     Item {
         key: "frontend",
@@ -135,7 +142,7 @@ pub const ENV_VARS: &[(&str, &str)] = &[
     ("EMUERA_DEBUG_FRAMES", "any value: print each frame drawn (size and picture keys) to stderr (debugging)"),
     ("EMUERA_GBUF_MB", "MB graphics buffers may take unpacked (default: 1/8 of the memory)"),
     ("EMUERA_PICTURES_MB", "MB decoded picture files may take (default: 1/8 of the memory)"),
-    ("EMUERA_WARMUP", "1 / 0: decode last session's pictures in the background at start (default: on, off headless)"),
+    ("EMUERA_WARMUP", "1 / 0: decode last session's pictures in the background at start (default: the Picture warm-up setting, off headless)"),
     ("EMUERA_GFX", "default for --gfx: kitty, iterm, sixel, fb or none"),
     ("EMUERA_GPMCTL", "path of the gpm socket (default /dev/gpmctl), for testing the Linux-console mouse"),
     ("EMUERA_GPM_VC", "the virtual console number the gpm mouse is read for (testing)"),
