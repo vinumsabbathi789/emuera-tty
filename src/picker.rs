@@ -327,7 +327,7 @@ impl Picker {
                 } else {
                     "⇄ Saves: each worktree keeps its own (Enter: share the main checkout's)".to_string()
                 };
-                self.entries.push(Entry { label, kind: Kind::ToggleSharedSaves });
+                self.entries.push(Entry { label, wrapped: Vec::new(), kind: Kind::ToggleSharedSaves });
                 if let Some((_, _, list)) = worktree_set(&self.wt_main.join(&self.wt_sub)) {
                     for (dir, head) in list {
                         let g = if self.wt_sub.as_os_str().is_empty() { dir.clone() } else { dir.join(&self.wt_sub) };
@@ -337,11 +337,16 @@ impl Picker {
                         let g = self.st.library.iter().find(|l| l.canonicalize().ok() == canon && canon.is_some()).cloned().unwrap_or(g);
                         let ok = is_game_dir(&g);
                         let main = if dir == self.wt_main { "  (main)" } else { "" };
-                        self.entries.push(Entry { label: format!("★ {}{}   {}", head, main, g.display()), kind: Kind::Game { path: g, ok } });
+                        self.entries.push(Entry {
+                            label: format!("★ {}{}   {}", head, main, g.display()),
+                            wrapped: Vec::new(),
+                            kind: Kind::Game { path: g, ok },
+                        });
                     }
                 }
-                self.entries.push(Entry { label: "← Back".into(), kind: Kind::Back });
-                self.sel = self.sel.min(self.entries.len() - 1);
+                self.entries.push(Entry { label: "← Back".into(), wrapped: Vec::new(), kind: Kind::Back });
+                self.rebuild_entry_line();
+                self.sel = self.sel.min(self.entry_line.len().saturating_sub(1));
                 return;
             }
             Mode::Browse => {}
@@ -618,7 +623,7 @@ impl Picker {
                 Err(None)
             }
             (Mode::Library, Act::Letter('w')) => {
-                if let Some(Entry { kind: Kind::Game { path, .. }, .. }) = self.entries.get(self.sel) {
+                if let Some(Entry { kind: Kind::Game { path, .. }, .. }) = entry_idx.and_then(|i| self.entries.get(i)) {
                     match worktree_set(path) {
                         Some((main, sub, list)) if list.len() > 1 => {
                             self.wt_main = main;
