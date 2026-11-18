@@ -69,9 +69,9 @@ pub const FUNCTIONS: &[&str] = &[
     "XML_DOCUMENT", "XML_RELEASE", "XML_EXIST", "XML_TOSTR", "XML_GET", "XML_GET_BYNAME", "XML_SET", "XML_SET_BYNAME", "XML_ADDNODE", "XML_ADDNODE_BYNAME",
     "XML_REMOVENODE", "XML_REMOVENODE_BYNAME", "XML_REPLACE", "XML_REPLACE_BYNAME", "XML_ADDATTRIBUTE", "XML_ADDATTRIBUTE_BYNAME", "XML_REMOVEATTRIBUTE",
     "XML_REMOVEATTRIBUTE_BYNAME", // graphics buffers (methods, usable as statements: result in RESULT)
-    "GCREATE", "GCREATEFROMFILE", "GDISPOSE", "GCLEAR", "GFILLRECTANGLE", "GDRAWSPRITE", "GDRAWG", "GDRAWGWITHMASK", "GSETCOLOR", "GSETBRUSH", "GSAVE", "GLOAD",
-    "SPRITECREATE", "SPRITEDISPOSE", "ARRAYMSORT", "GDRAWLINE", "GDRAWTEXT", "GDASHSTYLE", "GDRAWGWITHROTATE", "GSETPEN", "GSETFONT", "GGETBRUSH", "GGETPEN",
-    "GGETPENWIDTH", "GGETFONT", "GGETFONTSIZE", "GGETFONTSTYLE", "GGETTEXTSIZE", "SPRITEDISPOSEALL", "SPRITEGETCOLOR", "SPRITEMOVE", "SPRITESETPOS",
+    "GCREATE", "GCREATEFROMFILE", "GDISPOSE", "GCLEAR", "GFILLRECTANGLE", "GDRAWSPRITE", "GDRAWG", "GDRAWGWITHMASK", "GSETCOLOR", "GSETBRUSH", "GSAVE",
+    "GLOAD", "SPRITECREATE", "SPRITEDISPOSE", "ARRAYMSORT", "GDRAWLINE", "GDRAWTEXT", "GDASHSTYLE", "GDRAWGWITHROTATE", "GSETPEN", "GSETFONT", "GGETBRUSH",
+    "GGETPEN", "GGETPENWIDTH", "GGETFONT", "GGETFONTSIZE", "GGETFONTSTYLE", "GGETTEXTSIZE", "SPRITEDISPOSEALL", "SPRITEGETCOLOR", "SPRITEMOVE", "SPRITESETPOS",
     "FLOWINPUT", "FLOWINPUTS", "GETNUMB", "HOTKEY_STATE", "HOTKEY_STATE_INIT", "ERDNAME", "EXISTMETH", "UNICODEBYTE", "ENUMFUNCWITH", "ENUMFUNCENDSWITH",
     "ENUMVARBEGINSWITH", "ENUMVARWITH", "ENUMVARENDSWITH", "ENUMMACROBEGINSWITH", "ENUMMACROWITH", "ENUMMACROENDSWITH", "ENUMFILES", "HTML_SUBSTRING",
     "HTML_STRINGLINES", "GETDISPLAYLINE", "MAP_FROMXML",
@@ -990,15 +990,30 @@ impl Vm {
                 self.con.print(&out);
                 self.con.newline();
             }
-            // Emuera-EM's fixed overlay; the terminal prints it in the log
+            // the HTML island: lines drawn over the window from its top,
+            // outside the log, kept until cleared; Emuera.NET adds layers
+            // (a depth, drawn in increasing order)
             "HTML_PRINT_ISLAND" => {
                 let s = self.as_(a, 0, "")?;
-                self.html_print(&s);
+                let depth = if a.len() > 1 { self.ai(a, 1, 0)? } else { 0 };
+                if !self.con.skip_disp && !s.is_empty() {
+                    let lines = self.html_apart(&s, self.con.width);
+                    self.con.island.entry(depth).or_default().extend(lines);
+                    self.con.dirty = true;
+                }
+            }
+            "HTML_PRINT_ISLAND_CLEAR" => {
+                if a.is_empty() {
+                    self.con.island.clear();
+                } else {
+                    let depth = self.ai(a, 0, 0)?;
+                    self.con.island.remove(&depth);
+                }
+                self.con.dirty = true;
             }
             // window chrome a terminal doesn't have: tooltips, the input
             // box's position, background images and layers
-            "HTML_PRINT_ISLAND_CLEAR"
-            | "MOVETEXTBOX"
+            "MOVETEXTBOX"
             | "RESUMETEXTBOX"
             | "SETBGIMAGE"
             | "REMOVEBGIMAGE"
