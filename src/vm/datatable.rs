@@ -98,11 +98,43 @@ pub struct DataTable {
 
 thread_local! {
     static LAST_ID: Cell<i64> = const { Cell::new(0) };
+    /// the local time's offset from UTC in ticks, taken once (as Emuera
+    /// takes DateTime.Now once at start)
+    static LOCAL_OFFSET: Cell<Option<i64>> = const { Cell::new(None) };
 }
 
-/// Utils.TimePoint(): a strictly increasing tick count used for row ids.
+/// .NET ticks (100 ns) from 0001-01-01 to 1970-01-01.
+const UNIX_EPOCH_TICKS: i64 = 621_355_968_000_000_000;
+
+/// The local time's offset from UTC, in ticks, rounded to 15 minutes
+/// (every zone's offset is a multiple of that; the rounding absorbs the
+/// two clock reads falling in different seconds).
+fn local_offset_ticks() -> i64 {
+    LOCAL_OFFSET.with(|c| {
+        if let Some(o) = c.get() {
+            return o;
+        }
+        let local = crate::sys::now();
+        let utc = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+        let mut off = (local.h * 3600 + local.mi * 60 + local.s) - utc.rem_euclid(86400);
+        if off > 14 * 3600 {
+            off -= 86400;
+        } else if off < -12 * 3600 {
+            off += 86400;
+        }
+        let o = (off as f64 / 900.0).round() as i64 * 900 * 10_000_000;
+        c.set(Some(o));
+        o
+    })
+}
+
+/// Utils.TimePoint(): a strictly increasing tick count used for row ids:
+/// DateTime.Now.Ticks, 100 ns steps since 0001-01-01 in local time (about
+/// 6.4e17 today). Games rely on its size: pops-tw tells an inventory
+/// weapon (a row id) from a weapon number by `id > 600000000000000000`.
 pub fn next_id() -> i64 {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| (d.as_nanos() / 100) as i64).unwrap_or(0);
+    let unix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| (d.as_nanos() / 100) as i64).unwrap_or(0);
+    let now = UNIX_EPOCH_TICKS + local_offset_ticks() + unix;
     LAST_ID.with(|l| {
         let id = now.max(l.get() + 1);
         l.set(id);
@@ -864,6 +896,9 @@ mod tests {
     fn ids_increase() {
         let a = next_id();
         assert!(next_id() > a);
+        // .NET ticks, as Emuera's: past 2020-01-01 (637134336000000000)
+        // and before 2200-01-01, so above pops-tw's 6e17 threshold
+        assert!(a > 637_134_336_000_000_000 && a < 693_937_152_000_000_000, "{}", a);
     }
 
     #[test]
