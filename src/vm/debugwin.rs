@@ -138,7 +138,11 @@ impl Vm {
                 self.con.debug.open = true;
                 self.debug_refresh();
             }
-            "DEBUG" => self.print_error("デバッグウインドウは-Debug引数付きで起動したときのみ使えます"),
+            "DEBUG" => self.print_error(&crate::em!(
+                "Error.CanNotUseDebugWindow",
+                "デバッグウインドウは-Debug引数付きで起動したときのみ使えます",
+                "the debug window can only be used when the game was started in debug mode"
+            )),
             "REBOOT" => self.reload_erb(),
             "CONFIG" => {
                 self.reload_config();
@@ -154,7 +158,11 @@ impl Vm {
                     self.print_error("Failed to write log");
                 }
             }
-            _ if !self.cfg.bool("デバッグコマンドを使用する") => self.print_error("デバッグコマンドを使用できない設定になっています"),
+            _ if !self.cfg.bool("デバッグコマンドを使用する") => self.print_error(&crate::em!(
+                "Error.CanNotUseDebugCommand",
+                "デバッグコマンドを使用できない設定になっています",
+                "debug commands are turned off in the game's settings"
+            )),
             _ => match self.debug_run(com, true) {
                 Ok(()) => {
                     if self.cfg.bool("デバッグコマンドを使用した時にMASTERの名前を変更する") {
@@ -308,15 +316,18 @@ impl Vm {
         if statement {
             let word: String = com.chars().take_while(|&c| crate::expr::is_ident_char(c) && c != '　').collect::<String>().to_uppercase();
             if crate::parser::FLOW_WORDS.contains(&word.as_str()) {
-                return Err("フロー制御命令は使用できません".into());
+                return Err(crate::em!("Error.CanNotUseFlowInstruction", "フロー制御命令は使用できません", "flow control statements can't be used here"));
             }
             let wait = crate::parser::parse_print_name(&word).is_some_and(|(_, f)| f.wait);
             if wait || NOT_IN_DEBUG.contains(&word.as_str()) || super::builtins::NOT_IN_FUNCTION.binary_search(&word.as_str()).is_ok() {
-                return Err(format!("{}命令は使用できません", word));
+                return Err(crate::em!("Error.CanNotUseInstruction", "{0}命令は使用できません", "the {0} statement can't be used here", word));
             }
             let compiled = match &self.prog.snippets {
-                Some(p) => p.lock().map_err(|_| "解釈できない行です".to_string())?.compile_snippet("__DEBUGCOMMAND", com),
-                None => Err("解釈できない行です".into()),
+                Some(p) => p
+                    .lock()
+                    .map_err(|_| crate::em!("Error.CanNotInterpretedLine", "解釈できない行です", "this line can't be understood"))?
+                    .compile_snippet("__DEBUGCOMMAND", com),
+                None => Err(crate::em!("Error.CanNotInterpretedLine", "解釈できない行です", "this line can't be understood")),
             };
             if let Ok(f) = compiled {
                 let depth = self.frames.len();
@@ -325,12 +336,13 @@ impl Vm {
                 return match r {
                     Ok(_) => Ok(()),
                     Err(super::Ctrl::Error(m, _)) => Err(bare(&m)),
-                    Err(_) => Err("フロー制御命令は使用できません".into()),
+                    Err(_) => Err(crate::em!("Error.CanNotUseFlowInstruction", "フロー制御命令は使用できません", "flow control statements can't be used here")),
                 };
             }
         }
         // an expression: its value (Emuera prints it with DEBUGPRINTFORML)
-        let e = crate::expr::parse_expr(com, &self.prog.defines).map_err(|_| "解釈できない行です".to_string())?;
+        let e = crate::expr::parse_expr(com, &self.prog.defines)
+            .map_err(|_| crate::em!("Error.CanNotInterpretedLine", "解釈できない行です", "this line can't be understood"))?;
         let e = crate::parser::upper_expr(e);
         let depth = self.frames.len();
         let r = self.eval(&e);
@@ -346,7 +358,7 @@ impl Vm {
                 Ok(())
             }
             Err(super::Ctrl::Error(m, _)) => Err(m),
-            Err(_) => Err("解釈できない行です".into()),
+            Err(_) => Err(crate::em!("Error.CanNotInterpretedLine", "解釈できない行です", "this line can't be understood")),
         }
     }
 
